@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #001f3d;
+  --color-foreground: #e6e6e6;
+
+  --color-card: #001f3d;
+  --color-card-foreground: #e6e6e6;
+
+  --color-popover: #001f3d;
+  --color-popover-foreground: #e6e6e6;
+
+  --color-primary: #ed985f;
+  --color-primary-foreground: #001f3d;
+
+  --color-secondary: #f7b980;
+  --color-secondary-foreground: #001f3d;
+
+  --color-muted: #0f2e4d;
+  --color-muted-foreground: #a3a3a3;
+
+  --color-accent: #0f2e4d;
+  --color-accent-foreground: #e6e6e6;
+
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: #1e3a5f;
+  --color-input: #1e3a5f;
+  --color-ring: #ed985f;
+
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/* Custom Utilities */
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+/* Base Styles */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  button {
+    @apply cursor-pointer;
+  }
+}
+
+/* Markdown Content */
+.markdown-content {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  color: var(--color-foreground);
+}
+
+.markdown-content h1 {
+  font-size: 1.5em;
+}
+.markdown-content h2 {
+  font-size: 1.3em;
+}
+.markdown-content h3 {
+  font-size: 1.1em;
+}
+
+.markdown-content p {
+  margin-bottom: 0.75em;
+}
+
+.markdown-content code {
+  background: var(--color-muted);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: monospace;
+  color: var(--color-primary);
+}
+
+.markdown-content pre {
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.markdown-content pre code {
+  background: none;
+  padding: 0;
+  color: var(--color-foreground);
+}
+
+.markdown-content a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.markdown-content a:hover {
+  text-decoration: underline;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: var(--color-muted-foreground);
+}

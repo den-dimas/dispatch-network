@@ -1,0 +1,1 @@
+{"commands": ["interface FastEthernet1/1", "ip address 192.168.140.67 255.255.255.0", "speed auto", "duplex auto"]}

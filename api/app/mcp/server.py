@@ -48,15 +48,23 @@ def propose_configuration(topology_id: str, device_configs: List[dict]) -> str:
     - topology_id: (Injected automatically)
     - device_configs: List of device configurations. Each dict must have:
         - "device_name": Target device name (e.g., "R1")
-        - "commands": List of configuration lines
-        - "parent": REQUIRED for commands that need context mode
+        - "commands": List of configuration lines (commands ONLY, NO parent command, NO leading spaces)
+        - "parent": Context command or null for global
     
-    CRITICAL PARENT REQUIREMENTS:
-    - VLAN commands ("name HR", etc.) → parent: "vlan 10"
-    - Interface commands ("ip address...", "encapsulation...") → parent: "interface GigabitEthernet1/0"
-    - Access-list rules ("permit ip...", "deny ip...") → parent: "ip access-list extended IT_ACCESS"
-    - Router protocol commands → parent: "router ospf 1"
-    - Global commands ONLY (hostname, ip routing) → parent: null
+    CRITICAL STRUCTURE RULES:
+    1. Each context gets its own separate dict entry
+    2. The parent is the context-entering command (e.g., "interface GigabitEthernet1/0.10")
+    3. Commands list contains ONLY sub-commands (e.g., ["encapsulation dot1Q 10"])
+    4. DO NOT include the parent command in the commands list
+    5. DO NOT add leading spaces to commands
+    6. Global commands (hostname, access-list entries) use parent: null
+    
+    CONTEXT TYPES:
+    - Interface config → parent: "interface GigabitEthernet1/0.10"
+    - VLAN config → parent: "vlan 10"
+    - Named ACL → parent: "ip access-list extended IT_ACCESS"
+    - Router protocol → parent: "router ospf 1"
+    - Global commands → parent: null
     
     MANDATORY WORKFLOW:
     1. Call fetch_related_knowledge for syntax/SOPs
@@ -64,14 +72,39 @@ def propose_configuration(topology_id: str, device_configs: List[dict]) -> str:
     3. Call THIS tool to validate structure
     4. Call push_configuration with the validated structure
     
-    EXAMPLE:
+    EXAMPLE - CORRECT:
     device_configs = [
-        {"device_name": "R1", "commands": ["name HR"], "parent": "vlan 10"},
-        {"device_name": "R1", "commands": ["encapsulation dot1Q 10", "ip address 192.168.10.1 255.255.255.0"], "parent": "interface GigabitEthernet1/0.10"},
-        {"device_name": "R1", "commands": ["permit ip 192.168.30.0 0.0.0.255 any"], "parent": "ip access-list extended IT_ACCESS"}
+        {"device_name": "R1", "parent": "vlan 10", "commands": ["name HR"]},
+        {"device_name": "R1", "parent": "interface GigabitEthernet1/0.10", "commands": ["encapsulation dot1Q 10", "ip address 192.168.10.1 255.255.255.0"]},
+        {"device_name": "R1", "parent": null, "commands": ["access-list 101 permit ip any any"]}
+    ]
+    
+    EXAMPLE - WRONG (don't do this):
+    device_configs = [
+        {"device_name": "R1", "parent": null, "commands": ["interface Gi1/0.10", " encapsulation dot1Q 10"]}
     ]
     """
     try:
+        errors = []
+        for idx, config in enumerate(device_configs):
+            device_name = config.get("device_name")
+            commands = config.get("commands", [])
+            parent = config.get("parent")
+            
+            if not device_name:
+                errors.append(f"Entry {idx}: Missing device_name")
+            if not commands:
+                errors.append(f"Entry {idx}: No commands provided")
+            
+            for cmd in commands:
+                if cmd.startswith(" ") or cmd.startswith("\t"):
+                    errors.append(f"Entry {idx}: Command '{cmd}' has leading whitespace - remove it")
+                if any(cmd.startswith(prefix) for prefix in ["interface ", "vlan ", "router ", "ip access-list "]):
+                    errors.append(f"Entry {idx}: Command '{cmd}' looks like a parent command - move it to parent field")
+        
+        if errors:
+            return "VALIDATION ERRORS:\n" + "\n".join(errors)
+        
         proposal_data = {
             "devices": device_configs,
             "reasoning": "Configuration validated and structured with proper parent contexts for Ansible execution."
@@ -94,16 +127,25 @@ def push_configuration(topology_id: str, device_configs: List[dict]) -> str:
     - topology_id: (Injected automatically)
     - device_configs: List of device configurations. Each dict must have:
         - "device_name": Target device name (e.g., "R1")
-        - "commands": List of configuration lines
-        - "parent": REQUIRED for all non-global commands (see propose_configuration for details)
+        - "commands": List of configuration lines (commands ONLY, NO parent command, NO leading spaces)
+        - "parent": Context command (e.g., "interface GigabitEthernet1/0.10") or null for global
     
-    CRITICAL: Each command group MUST have the correct parent.
-    - VLAN config commands → parent: "vlan X"
-    - Interface commands → parent: "interface <name>"
-    - ACL rules → parent: "ip access-list extended <name>"
-    - Global commands only → parent: null
+    STRUCTURE RULES:
+    1. Each context gets its own separate dict in device_configs
+    2. The parent is the context-entering command (e.g., "interface Gi1/0.10")
+    3. Commands list contains ONLY the sub-commands (e.g., ["encapsulation dot1Q 10", "ip address ..."])
+    4. DO NOT include the parent command in the commands list
+    5. DO NOT add leading spaces to commands
+    6. Global commands (hostname, access-list) use parent: null
     
-    DO NOT mix different contexts in one command list. Each parent gets its own dict entry.
+    EXAMPLE - CORRECT:
+    device_configs = [
+        {"device_name": "R1", "parent": "interface GigabitEthernet1/0.10", "commands": ["encapsulation dot1Q 10", "ip address 192.168.10.1 255.255.255.0"]},
+        {"device_name": "R1", "parent": null, "commands": ["access-list 101 permit ip any any"]}
+    ]
+    
+    EXAMPLE - WRONG:
+    device_configs = [{"device_name": "R1", "parent": null, "commands": ["interface Gi1/0.10", " encapsulation dot1Q 10"]}]
     """
     try:
         results = []
@@ -112,11 +154,16 @@ def push_configuration(topology_id: str, device_configs: List[dict]) -> str:
             commands = config.get("commands", [])
             parent = config.get("parent")
             
-            print(f"Pushing config to {device_name}: {commands}")
+            if not device_name:
+                return "Error: device_name is required in device_configs"
+            if not commands:
+                return f"Error: No commands provided for device {device_name}"
+            
+            print(f"Pushing to {device_name} [parent: {parent or 'global'}]: {commands}")
             result = ansible.run_push_config(topology_id, device_name, commands, parent)
-            results.append(f"Device {device_name}: {result}")
+            results.append(f"✓ {device_name} [{parent or 'global'}]: Success")
         
-        return "\n\n".join(results)
+        return "\n".join(results)
     except Exception as e:
         return f"Push Error: {str(e)}"
 

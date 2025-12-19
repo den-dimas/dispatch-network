@@ -7,5 +7,5 @@
   tasks:
     - name: Apply configuration commands
       cisco.ios.ios_config:
-        parents: "{{ interface_config.name | default(omit) }}"
+        parents: "{{ interface_config.name | default(omit, true) }}"
         lines: "{{ interface_config.commands }}"

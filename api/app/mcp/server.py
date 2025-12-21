@@ -39,113 +39,35 @@ def fetch_live_config(topology_id: str, device_name: str) -> str:
         return f"System Error fetching config: {str(e)}"
 
 @mcp.tool
-def propose_configuration(topology_id: str, device_configs: List[dict]) -> str:
-    """
-    Validates and structures configuration commands before pushing to devices.
-    Returns a formatted proposal showing how commands will be organized.
-    
-    ARGS:
-    - topology_id: (Injected automatically)
-    - device_configs: List of device configurations. Each dict must have:
-        - "device_name": Target device name (e.g., "R1")
-        - "commands": List of configuration lines (commands ONLY, NO parent command, NO leading spaces)
-        - "parent": Context command or null for global
-    
-    CRITICAL STRUCTURE RULES:
-    1. Each context gets its own separate dict entry
-    2. The parent is the context-entering command (e.g., "interface GigabitEthernet1/0.10")
-    3. Commands list contains ONLY sub-commands (e.g., ["encapsulation dot1Q 10"])
-    4. DO NOT include the parent command in the commands list
-    5. DO NOT add leading spaces to commands
-    6. Global commands (hostname, access-list entries) use parent: null
-    
-    CONTEXT TYPES:
-    - Interface config → parent: "interface GigabitEthernet1/0.10"
-    - VLAN config → parent: "vlan 10"
-    - Named ACL → parent: "ip access-list extended IT_ACCESS"
-    - Router protocol → parent: "router ospf 1"
-    - Global commands → parent: null
-    
-    MANDATORY WORKFLOW:
-    1. Call fetch_related_knowledge for syntax/SOPs
-    2. Call fetch_live_config to check current state
-    3. Call THIS tool to validate structure
-    4. Call push_configuration with the validated structure
-    
-    EXAMPLE - CORRECT:
-    device_configs = [
-        {"device_name": "R1", "parent": "vlan 10", "commands": ["name HR"]},
-        {"device_name": "R1", "parent": "interface GigabitEthernet1/0.10", "commands": ["encapsulation dot1Q 10", "ip address 192.168.10.1 255.255.255.0"]},
-        {"device_name": "R1", "parent": null, "commands": ["access-list 101 permit ip any any"]}
-    ]
-    
-    EXAMPLE - WRONG (don't do this):
-    device_configs = [
-        {"device_name": "R1", "parent": null, "commands": ["interface Gi1/0.10", " encapsulation dot1Q 10"]}
-    ]
-    """
-    try:
-        errors = []
-        for idx, config in enumerate(device_configs):
-            device_name = config.get("device_name")
-            commands = config.get("commands", [])
-            parent = config.get("parent")
-            
-            if not device_name:
-                errors.append(f"Entry {idx}: Missing device_name")
-            if not commands:
-                errors.append(f"Entry {idx}: No commands provided")
-            
-            for cmd in commands:
-                if cmd.startswith(" ") or cmd.startswith("\t"):
-                    errors.append(f"Entry {idx}: Command '{cmd}' has leading whitespace - remove it")
-                if any(cmd.startswith(prefix) for prefix in ["interface ", "vlan ", "router ", "ip access-list "]):
-                    errors.append(f"Entry {idx}: Command '{cmd}' looks like a parent command - move it to parent field")
-        
-        if errors:
-            return "VALIDATION ERRORS:\n" + "\n".join(errors)
-        
-        proposal_data = {
-            "devices": device_configs,
-            "reasoning": "Configuration validated and structured with proper parent contexts for Ansible execution."
-        }
-        
-        proposal_json = json.dumps(proposal_data, indent=2)
-        
-        return f"<config_proposal>{proposal_json}</config_proposal>\n\nReady to push. Call push_configuration with the same device_configs structure."
-    except Exception as e:
-        return f"Proposal Error: {str(e)}"
-
-@mcp.tool
 def push_configuration(topology_id: str, device_configs: List[dict]) -> str:
     """
-    Pushes configuration commands to one or more live devices.
-    
-    ⚠️ MANDATORY: Call propose_configuration FIRST to validate structure.
-    
+    Pushes configuration commands to live devices using Ansible.
+
     ARGS:
     - topology_id: (Injected automatically)
-    - device_configs: List of device configurations. Each dict must have:
-        - "device_name": Target device name (e.g., "R1")
-        - "commands": List of configuration lines (commands ONLY, NO parent command, NO leading spaces)
-        - "parent": Context command (e.g., "interface GigabitEthernet1/0.10") or null for global
+    - device_configs: List of configuration dictionaries.
     
-    STRUCTURE RULES:
-    1. Each context gets its own separate dict in device_configs
-    2. The parent is the context-entering command (e.g., "interface Gi1/0.10")
-    3. Commands list contains ONLY the sub-commands (e.g., ["encapsulation dot1Q 10", "ip address ..."])
-    4. DO NOT include the parent command in the commands list
-    5. DO NOT add leading spaces to commands
-    6. Global commands (hostname, access-list) use parent: null
+    ### CONFIGURATION MODES & STRUCTURE
     
-    EXAMPLE - CORRECT:
-    device_configs = [
-        {"device_name": "R1", "parent": "interface GigabitEthernet1/0.10", "commands": ["encapsulation dot1Q 10", "ip address 192.168.10.1 255.255.255.0"]},
-        {"device_name": "R1", "parent": null, "commands": ["access-list 101 permit ip any any"]}
-    ]
-    
-    EXAMPLE - WRONG:
-    device_configs = [{"device_name": "R1", "parent": null, "commands": ["interface Gi1/0.10", " encapsulation dot1Q 10"]}]
+    1. **Global Configuration Mode** (Commands run directly in `config terminal`)
+       - **Definition**: Commands that apply to the whole device.
+       - **Structure**: `parent: null`
+       - **Examples**: `hostname`, `ip routing`, `ip route ...`, `username ...`, `crypto key generate`
+       - **JSON**: `{"device_name": "R1", "parent": null, "commands": ["hostname CORE-R1"]}`
+
+    2. **Sub-Configuration Mode** (Interface, Router, Line, ACL)
+       - **Definition**: Commands that require entering a specific section first.
+       - **Structure**: `parent: "SECTION COMMAND"`
+       - **Examples**: 
+         - Interface: `parent: "interface Gi0/0"`, `commands: ["ip address ..."]`
+         - OSPF: `parent: "router ospf 1"`, `commands: ["network ..."]`
+         - Extended ACL: `parent: "ip access-list extended FILTER_WEB"`, `commands: ["permit tcp ..."]`
+       - **JSON**: `{"device_name": "R1", "parent": "interface Gi0/0", "commands": ["no shutdown"]}`
+
+    ### CRITICAL RULES
+    1. **Do not nest parents**: If you need to configure an interface, the `parent` IS the interface command.
+    2. **Clean Commands**: No leading spaces in `commands` list. Ansible handles indentation.
+    3. **One Block Per Context**: Do not mix Interface commands and Global commands in the same dict entry. Create two separate entries.
     """
     try:
         results = []
@@ -154,14 +76,11 @@ def push_configuration(topology_id: str, device_configs: List[dict]) -> str:
             commands = config.get("commands", [])
             parent = config.get("parent")
             
-            if not device_name:
-                return "Error: device_name is required in device_configs"
-            if not commands:
-                return f"Error: No commands provided for device {device_name}"
-            
             print(f"Pushing to {device_name} [parent: {parent or 'global'}]: {commands}")
+            
             result = ansible.run_push_config(topology_id, device_name, commands, parent)
-            results.append(f"✓ {device_name} [{parent or 'global'}]: Success")
+            
+            results.append(f"{device_name} [{parent or 'global'}]: Success")
         
         return "\n".join(results)
     except Exception as e:
@@ -170,13 +89,12 @@ def push_configuration(topology_id: str, device_configs: List[dict]) -> str:
 @mcp.tool
 async def fetch_related_knowledge(query: str, model_name: str, topology_id: str = None) -> str:
     """
-    Query the LightRAG knowledge base for Cisco Device configuration documentation,
-    topology details, or standard operating procedures (SOPs).
-
-    Always use this before generating configuration and before calling 'push_configuration'.
-
-    ARGS:
-    - topology_id: (Injected automatically, optional here)
+    Query the LightRAG knowledge base for Cisco Device configuration documentation.
+    
+    CRITICAL: 
+    - Use this tool BEFORE generating any configuration.
+    - Use this to check syntax (e.g. "How to configure OSPF on Cisco IOS").
+    - Use this to check SOPs (e.g. "Standard naming convention for WAN interfaces").
     """
     try:
         return await llm.query_context(query, model_name, "mix")

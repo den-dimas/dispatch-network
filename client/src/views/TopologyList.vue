@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-6">
     <div class="flex justify-between items-center">
       <h2 class="text-3xl font-bold tracking-tight text-foreground">Network Topologies</h2>
     </div>

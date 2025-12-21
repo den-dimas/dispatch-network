@@ -1,33 +1,33 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #001f3d;
-  --color-foreground: #e6e6e6;
+  --color-background: #ffffff;
+  --color-foreground: #1f2937;
 
-  --color-card: #001f3d;
-  --color-card-foreground: #e6e6e6;
+  --color-card: #ffffff;
+  --color-card-foreground: #1f2937;
 
-  --color-popover: #001f3d;
-  --color-popover-foreground: #e6e6e6;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1f2937;
 
-  --color-primary: #ed985f;
-  --color-primary-foreground: #001f3d;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
 
-  --color-secondary: #f7b980;
-  --color-secondary-foreground: #001f3d;
+  --color-secondary: #f3f4f6;
+  --color-secondary-foreground: #1f2937;
 
-  --color-muted: #0f2e4d;
-  --color-muted-foreground: #a3a3a3;
+  --color-muted: #f3f4f6;
+  --color-muted-foreground: #6b7280;
 
-  --color-accent: #0f2e4d;
-  --color-accent-foreground: #e6e6e6;
+  --color-accent: #f3f4f6;
+  --color-accent-foreground: #1f2937;
 
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
 
-  --color-border: #1e3a5f;
-  --color-input: #1e3a5f;
-  --color-ring: #ed985f;
+  --color-border: #e5e7eb;
+  --color-input: #e5e7eb;
+  --color-ring: #2563eb;
 
   --radius-lg: 0.5rem;
   --radius-md: calc(0.5rem - 2px);
@@ -60,6 +60,27 @@
   padding-inline: 2rem;
   @media (width >= 1400px) {
     max-width: 1400px;
+  }
+}
+
+/* Scrollbar Customization */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ring);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted-foreground);
   }
 }
 

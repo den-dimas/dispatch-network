@@ -33,71 +33,66 @@
                                 </div>
 
                                 <div v-if="device.device_type === 'Router'" class="flex items-center gap-2 mb-2">
-                                    <Input 
-                                        v-if="editingDevice === device.device_id"
-                                        v-model="editingIp"
-                                        placeholder="192.168.1.1"
-                                        class="h-8 text-sm"
-                                        @keyup.enter="saveDeviceIp(device)"
-                                        @keyup.escape="cancelEdit"
-                                    />
+                                    <Input v-if="editingDevice === device.device_id" v-model="editingIp"
+                                        placeholder="192.168.1.1" class="h-8 text-sm"
+                                        @keyup.enter="saveDeviceIp(device)" @keyup.escape="cancelEdit" />
                                     <span v-else class="text-sm">
                                         IP: {{ device.ip_address || 'Not set' }}
                                     </span>
-                                    
-                                    <Button 
-                                        v-if="editingDevice === device.device_id"
-                                        variant="ghost" 
-                                        size="icon"
-                                        class="h-6 w-6"
-                                        @click="saveDeviceIp(device)"
-                                        :disabled="savingIp"
-                                    >
+
+                                    <Button v-if="editingDevice === device.device_id" variant="ghost" size="icon"
+                                        class="h-6 w-6" @click="saveDeviceIp(device)" :disabled="savingIp">
                                         <Loader2 v-if="savingIp" class="h-3 w-3 animate-spin" />
                                         <Check v-else class="h-3 w-3" />
                                     </Button>
-                                    <Button 
-                                        v-if="editingDevice === device.device_id"
-                                        variant="ghost" 
-                                        size="icon"
-                                        class="h-6 w-6"
-                                        @click="cancelEdit"
-                                    >
+                                    <Button v-if="editingDevice === device.device_id" variant="ghost" size="icon"
+                                        class="h-6 w-6" @click="cancelEdit">
                                         <X class="h-3 w-3" />
                                     </Button>
-                                    <Button 
-                                        v-else
-                                        variant="ghost" 
-                                        size="icon"
-                                        class="h-6 w-6"
-                                        @click="startEditIp(device)"
-                                    >
+                                    <Button v-else variant="ghost" size="icon" class="h-6 w-6"
+                                        @click="startEditIp(device)">
                                         <Pencil class="h-3 w-3" />
                                     </Button>
                                 </div>
 
                                 <div v-if="device.latest_config" class="mt-3">
-                                    <Button variant="outline" size="sm" @click="toggleConfig(device.device_id)"
+                                    <Button variant="outline" size="sm" @click="openConfigModal(device)"
                                         class="w-full justify-between">
                                         <span class="text-xs">View Config</span>
-                                        <ChevronDown class="h-3 w-3 transition-transform"
-                                            :class="{ 'rotate-180': expandedConfig === device.device_id }" />
+                                        <ChevronRight class="h-3 w-3" />
                                     </Button>
-
-                                    <div v-if="expandedConfig === device.device_id"
-                                        class="mt-2 bg-muted border rounded p-3 max-h-96 overflow-y-auto">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <span class="text-xs text-muted-foreground">
-                                                Last updated: {{ formatDate(device.config_updated_at) }}
-                                            </span>
-                                        </div>
-                                        <pre
-                                            class="text-xs font-mono whitespace-pre-wrap break-all">{{ device.latest_config }}</pre>
-                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Config View Modal -->
+    <Dialog :open="!!viewingConfigDevice" @update:open="closeConfigModal">
+        <DialogContent class="sm:max-w-3xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+                <DialogTitle class="flex items-center gap-2">
+                    <FileText class="h-5 w-5 text-primary" />
+                    <span>Configuration: {{ viewingConfigDevice?.name }}</span>
+                </DialogTitle>
+                <DialogDescription>
+                    Last updated: {{ formatDate(viewingConfigDevice?.config_updated_at) }}
+                </DialogDescription>
+            </DialogHeader>
+
+            <div class="flex-1 min-h-0 bg-muted/50 rounded-md border mt-2 relative group flex flex-col">
+                <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <Button variant="secondary" size="sm" class="h-8 text-xs" @click="copyConfig">
+                        <Copy class="h-3 w-3 mr-1" />
+                        Copy
+                    </Button>
+                </div>
+                <div class="flex-1 overflow-auto p-4 w-full">
+                    <pre
+                        class="text-xs font-mono whitespace-pre-wrap break-all text-foreground">{{ viewingConfigDevice?.latest_config }}</pre>
                 </div>
             </div>
         </DialogContent>
@@ -116,7 +111,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, CheckCircle2, ChevronDown, Pencil, Check, X } from 'lucide-vue-next';
+import { Loader2, CheckCircle2, ChevronRight, Pencil, Check, X, FileText, Copy } from 'lucide-vue-next';
 
 const props = defineProps({
     topologyId: {
@@ -136,13 +131,27 @@ const props = defineProps({
 const emit = defineEmits(['close', 'refresh']);
 const store = useTopologyStore();
 
-const expandedConfig = ref(null);
+const viewingConfigDevice = ref(null);
 const editingDevice = ref(null);
 const editingIp = ref('');
 const savingIp = ref(false);
 
-const toggleConfig = (deviceId) => {
-    expandedConfig.value = expandedConfig.value === deviceId ? null : deviceId;
+const openConfigModal = (device) => {
+    viewingConfigDevice.value = device;
+};
+
+const closeConfigModal = (value) => {
+    if (!value) viewingConfigDevice.value = null;
+};
+
+const copyConfig = async () => {
+    if (viewingConfigDevice.value?.latest_config) {
+        try {
+            await navigator.clipboard.writeText(viewingConfigDevice.value.latest_config);
+        } catch (err) {
+            console.error('Failed to copy config', err);
+        }
+    }
 };
 
 const startEditIp = (device) => {
@@ -159,7 +168,7 @@ const saveDeviceIp = async (device) => {
     if (!editingIp.value) {
         return;
     }
-    
+
     savingIp.value = true;
     try {
         await store.updateDeviceIp(props.topologyId, device.device_id, editingIp.value);
